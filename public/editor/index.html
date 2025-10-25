@@ -24,9 +24,8 @@
     }
 
     try {
-      // 1. --- NO CHANGE NEEDED HERE ---
-      // We declare a variable, but we won't use it.
-      // We will use the global 'window.editorInstance' instead.
+      // This local variable 'editor' is fine, but we will
+      // assign the instance to 'window.editorInstance'
       let editor; 
 
       require.config({ paths: { 'vs': './vs' } });
@@ -34,20 +33,22 @@
       require(['vs/editor/editor.main'], function () {
         document.querySelector('h1').remove();
         
-        // 2. --- FIX 1: Assign to window.editorInstance ---
+        // --- FIX: Assign to window.editorInstance ---
         window.editorInstance = monaco.editor.create(document.getElementById('editor'), {
-          value: '// OFFLINE MODE!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n',
+          value: '// Welcome to your new editor!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n',
           language: 'javascript',
           theme: 'vs-dark',
           minimap: { enabled: false },
           wordWrap: 'on',
           fontSize: 16,
+          // --- ADD THIS LINE TO STOP AUTO-INDENT ---
+          autoIndent: 'none',
+          onpaste:false
         });
 
-        // 4. Bridge: WebView -> React Native
-        // 3. --- FIX 2: Use window.editorInstance ---
+        // 4. Bridge: WebView -> React Native (for every keystroke)
+        // --- FIX: Use window.editorInstance ---
         window.editorInstance.getModel().onDidChangeContent(() => {
-          // 4. --- FIX 3: Use window.editorInstance ---
           const code = window.editorInstance.getValue(); 
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(
@@ -59,12 +60,42 @@
 
       // 5. Bridge: React Native -> WebView
       document.addEventListener('message', function(event) {
-        const newCode = event.data;
-        // 5. --- FIX 4: Use window.editorInstance ---
-        if (window.editorInstance) { 
-          // 6. --- FIX 5: Use window.editorInstance ---
-          window.editorInstance.setValue(newCode); 
-        }
+          let data;
+          try {
+            // Try to parse the message as JSON
+            data = JSON.parse(event.data);
+          } catch (e) {
+            // It's not JSON, so it must be the old 'newCode' string
+            // (This path is no longer used by our RN app but is safe to keep)
+            if (window.editorInstance) {
+              window.editorInstance.setValue(event.data);
+            }
+            return; // Exit
+          }
+
+          // --- HANDLE THE JSON MESSAGE ---
+          if (data && data.type === 'setLanguage') {
+            // <<< THIS IS THE NEW PART >>>
+            const newLanguage = data.payload;
+            if (window.editorInstance) {
+              monaco.editor.setModelLanguage(
+                window.editorInstance.getModel(),
+                newLanguage
+              );
+            }
+          } 
+          // --- ADD THIS NEW BLOCK ---
+          else if (data && data.type === 'paste') {
+            if (window.editorInstance) {
+              // This triggers Monaco's native paste action
+              // and inserts the text at the current cursor.
+              window.editorInstance.trigger('clipboard', 'paste', {
+                text: data.payload
+              });
+            }
+          }
+          // --- END OF NEW BLOCK ---
+          
       });
 
     } catch (e) {
