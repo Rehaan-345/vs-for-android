@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import Constants from 'expo-constants';
 import DropDownPicker from 'react-native-dropdown-picker';
-import * as Clipboard from 'expo-clipboard'; // 2. Import Clipboard
+import * as Clipboard from 'expo-clipboard';
 import { MONACO_LANGUAGES } from '../constants/languages'; // Make sure this path is correct
 
 const { width } = Dimensions.get("window");
@@ -61,13 +61,16 @@ export default function IndexScreen() {
   const webViewRef = useRef<WebView>(null);
   const [message, setMessage] = React.useState("Waiting for messages from HTML...");
   const [useMonaco, setUseMonaco] = React.useState(true);
-  // 2. --- ADD NEW STATE FOR THE COPY MODAL ---
   const [isCopyModalVisible, setCopyModalVisible] = useState(false);
   const [codeForCopy, setCodeForCopy] = useState('');
+  
   // --- Dropdown State ---
   const [open, setOpen] = useState(false);
   const [language, setLanguage] = useState('javascript');
   const [items, setItems] = useState(MONACO_LANGUAGES);
+
+  // --- Paste Flow State ---
+  const [textToPaste, setTextToPaste] = useState('');
 
   /**
    * 🔁 Receives messages from EITHER HTML file
@@ -81,18 +84,57 @@ export default function IndexScreen() {
         setMessage(data.payload);
         
       } else if (data.type === "showCopy") {
+        // From "Copy" button
         setCodeForCopy(data.payload); // A. Set the code
         setCopyModalVisible(true);     // B. Open the modal
         
       } else if (data.type === "run") {
-        // This is the code from Monaco, triggered by your "Run" button
+        // From "Run" button
         console.log("--- Code from Editor (Run Button) ---");
         console.log(data.payload);
         setMessage(data.payload);
         
       } else if (data.type === "code") {
-        // This is from the 'onDidChangeContent' (every keystroke)
+        // From 'onDidChangeContent' (every keystroke)
         // console.log("Code:", data.payload.substring(0, 50) + "...");
+
+      } else if (data.type === "pasteContext") {
+        // --- 1. GET nextLine FROM THE PAYLOAD ---
+        const { prevLine, currentLine, nextLine, lineNumber } = data.payload;
+        
+        if (!textToPaste) return; 
+
+        // --- 2. BUILD THE NEW CONTEXT MESSAGE ---
+        let contextMessage = "";
+        if (prevLine) {
+          contextMessage += `Line ${lineNumber - 1}: ${prevLine}\n`;
+        }
+        contextMessage += `Line ${lineNumber}: ${currentLine}`; // This line includes the cursor
+        if (nextLine) {
+          contextMessage += `\nLine ${lineNumber + 1}: ${nextLine}`;
+        }
+        // --- END OF NEW PART ---
+
+        // 3. The alert will now show all three lines
+        Alert.alert(
+          "Confirm Paste",
+          `\nCursor is at line ${lineNumber} \n(marked with  ---[CURSOR]--- ):\n\n${contextMessage}\n\nWill Paste:\n"${textToPaste.substring(0, 100)}..."`,
+          [
+            { text: "Cancel", style: "cancel", onPress: () => setTextToPaste('') },
+            {
+              text: "OK",
+              onPress: () => {
+                webViewRef.current?.postMessage(
+                  JSON.stringify({
+                    type: 'paste',
+                    payload: textToPaste,
+                  })
+                );
+                setTextToPaste('');
+              },
+            },
+          ]
+        );
       } else if (data.type === "error") {
         console.error("WebView Error:", data.message);
         setMessage(`WebView Error: ${data.message}`);
@@ -102,11 +144,10 @@ export default function IndexScreen() {
     }
   };
 
-  //  For copy Button
-  // 4. --- NEW "COPY" FUNCTION ---
+  /**
+   * 4. --- "COPY" FUNCTION ---
+   */
   const handleCopyPress = () => {
-    // This injects JS to get the code, just like your "Run" button
-    // But it sends a *different* message type back
     const jsToInject = `
       try {
         const code = window.editorInstance.getValue();
@@ -123,7 +164,10 @@ export default function IndexScreen() {
     webViewRef.current?.injectJavaScript(jsToInject);
   };
 
-  // For paste Button
+  /**
+   * 3. --- NEW "PASTE" FUNCTION ---
+   */
+  // --- UPDATE 'handlePastePress' ---
   const handlePastePress = async () => {
     // A. Get text from the clipboard
     const clipboardText = await Clipboard.getStringAsync();
@@ -133,39 +177,64 @@ export default function IndexScreen() {
       return;
     }
 
-    // B. Show the confirmation popup (your idea!)
-    Alert.alert(
-      "Paste from Clipboard",
-      clipboardText, // Show the user what they're pasting
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "OK",
-          onPress: () => {
-            // C. Send the text to the WebView
-            webViewRef.current?.postMessage(
-              JSON.stringify({
-                type: 'paste',
-                payload: clipboardText,
-              })
-            );
-          },
-        },
-      ]
-    );
+    // B. Store clipboard text in state
+    setTextToPaste(clipboardText);
+
+    // C. Inject JS to ask for the cursor's context
+    const jsToInject = `
+      try {
+        const position = window.editorInstance.getPosition();
+        const model = window.editorInstance.getModel();
+        
+        const currentLine = model.getLineContent(position.lineNumber) || "";
+        
+        
+        // --- OPTIONS TO CHOOSE KEEP THIS DONT REMOVE ---
+        // const lineWithCursor = currentLine.substring(0, position.column - 1) + " | " + currentLine.substring(position.column - 1);
+
+        // --- TO THIS ---
+        // const lineWithCursor = currentLine.substring(0, position.column - 1) + " ►|◄ " + currentLine.substring(position.column - 1);
+        
+        // --- OR THIS ---
+        const lineWithCursor = currentLine.substring(0, position.column - 1) + " ---[CURSOR]--- " + currentLine.substring(position.column - 1);
+
+        const prevLine = position.lineNumber > 1 ? model.getLineContent(position.lineNumber - 1) : "";
+
+        // --- THIS IS THE NEW PART ---
+        const lastLine = model.getLineCount();
+        const nextLine = position.lineNumber < lastLine ? model.getLineContent(position.lineNumber + 1) : "";
+        // --- END OF NEW PART ---
+
+        // Send a *new* message type back
+        window.ReactNativeWebView.postMessage(
+          JSON.stringify({
+            type: "pasteContext",
+            payload: {
+              prevLine: prevLine.trim(),
+              currentLine: lineWithCursor.trim(),
+              nextLine: nextLine.trim(), // <-- ADDED
+              lineNumber: position.lineNumber
+            }
+          })
+        );
+      } catch (e) {
+        // Fallback in case of error
+        window.ReactNativeWebView.postMessage(
+          JSON.stringify({ type: "pasteContext", payload: { prevLine: "", currentLine: "Could not get context.", nextLine: "", lineNumber: 0 } })
+        );
+      }
+      true;
+    `;
+    webViewRef.current?.injectJavaScript(jsToInject);
   };
 
 
   /**
-   * 🚀 Send 'Run' (get code) or 'Set Language' messages
+   * 🚀 Send 'Run' (get code) message
    */
   const sendToWebView = () => {
     if (useMonaco) {
       // --- MONACO MODE ---
-      // Get the code from the editor
       const jsToInject = `
         try {
           const code = window.editorInstance.getValue();
@@ -183,7 +252,6 @@ export default function IndexScreen() {
 
     } else {
       // --- SIMPLE MODE ---
-      // Just call the existing 'sendMessage' function inside the simple HTML
       const jsToInject = `
         if (typeof sendMessage === 'function') {
           sendMessage();
@@ -194,8 +262,10 @@ export default function IndexScreen() {
     }
   };
 
+  /**
+   * 🚀 Send 'Set Language' message
+   */
   const sendLanguageToWebView = (langValue: string) => {
-    // Send a new message type to the WebView
     webViewRef.current?.postMessage(
       JSON.stringify({
         type: 'setLanguage',
@@ -235,13 +305,12 @@ export default function IndexScreen() {
             }
           }}
           theme="DARK"
-          listMode="SCROLLVIEW"
+          // We must use MODAL to fix all scrolling and touch issues
+          listMode="MODAL" 
         />
         
         <View style={styles.headerButtons}>
-          {/* 5. --- ADD THE NEW "COPY" BUTTON --- */}
           {useMonaco && <Button title="Copy" onPress={handleCopyPress} />}
-          {/* 4. --- ADD THE NEW "PASTE" BUTTON --- */}
           {useMonaco && <Button title="Paste" onPress={handlePastePress} />}
           <Button
             title={useMonaco ? "Simple" : "Monaco"}
@@ -252,13 +321,7 @@ export default function IndexScreen() {
       </View>
 
       {/* WebView container */}
-      <View style={[
-        styles.webViewBox,
-        open && styles.webViewBoxHidden
-      ]}
-      // --- ADD THIS ---
-  pointerEvents={open ? 'none' : 'auto'}
-      >
+      <View style={styles.webViewBox}>
         <WebView
           ref={webViewRef}
           originWhitelist={["*"]}
@@ -269,13 +332,10 @@ export default function IndexScreen() {
           startInLoadingState
           renderLoading={renderWebLoading}
           style={{ flex: 1, backgroundColor: "#1e1e1e" }}
-          // --- ADD THIS LINE ---
-          // This tells the WebView to stop listening for scroll gestures
-          // when the 'open' state is true.
-          scrollEnabled={!open}
         />
       </View>
 
+      {/* "Copy" Modal */}
       <Modal
         visible={isCopyModalVisible}
         animationType="slide"
@@ -289,13 +349,12 @@ export default function IndexScreen() {
               You can now tap and hold the text below to select and copy.
             </Text>
             
-            {/* This is the read-only, selectable text input */}
             <TextInput
               style={styles.copyTextInput}
               value={codeForCopy}
               multiline={true}
-              // editable={false} // Read-only
-              selectionColor="#4CAF50" // Optional: style the selection
+              // editable={false} // Read-only but selectable
+              selectionColor="#4CAF50"
             />
             
             <Button title="Close" onPress={() => setCopyModalVisible(false)} />
@@ -304,9 +363,7 @@ export default function IndexScreen() {
       </Modal>
 
       {/* Output */}
-      <View style={styles.outputBox}
-      // --- ADD THIS ---
-  pointerEvents={open ? 'none' : 'auto'}>
+      <View style={styles.outputBox}>
         <Text style={styles.outputLabel}>Output:</Text>
         <Text style={styles.outputText}>{message}</Text>
       </View>
@@ -325,12 +382,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     minHeight: 70, 
+    // zIndex is only needed for listMode="SCROLLVIEW"
+    // but safe to keep.
     zIndex: 1000, 
   },
   headerButtons: {
     flexDirection: "row", 
     alignItems: "center",
-    gap:10
+    flexWrap: 'wrap', // Allows buttons to wrap if needed
+    justifyContent: 'flex-end',
+    flex: 1, // Take remaining space
+    gap: 10
   },
   dropdown: {
     backgroundColor: '#333',
@@ -348,7 +410,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#101010",
     overflow: "hidden",
   },
-  webViewBoxHidden: {
+  webViewBoxHidden: { // No longer necessary with MODAL, but safe
     zIndex: -1, 
   },
   loading: {
@@ -408,7 +470,7 @@ const styles = StyleSheet.create({
     color: '#ddd',
     padding: 10,
     borderRadius: 5,
-    fontFamily: 'monospace', // Make it look like code
+    fontFamily: 'monospace',
     fontSize: 16,
     textAlignVertical: 'top',
     marginBottom: 20,
