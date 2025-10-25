@@ -104,27 +104,36 @@ export default function IndexScreen() {
   };
 
   const sendToWebView = () => {
-  const jsToInject = `
-    try {
-      // 1. Call the new global variable
-      const code = window.editorInstance.getValue();
+    if (useMonaco) {
+      // --- MONACO MODE ---
+      // Get the code from the editor
+      const jsToInject = `
+        try {
+          const code = window.editorInstance.getValue();
+          window.ReactNativeWebView.postMessage(
+            JSON.stringify({ type: "run", payload: code })
+          );
+        } catch (e) {
+          window.ReactNativeWebView.postMessage(
+            JSON.stringify({ type: "error", message: "Failed to get code: " + e.message })
+          );
+        }
+        true; // Required for Android
+      `;
+      webViewRef.current?.injectJavaScript(jsToInject);
 
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(
-          JSON.stringify({ type: "run", payload: code })
-        );
-      }
-    } catch (e) {
-      window.ReactNativeWebView.postMessage(
-        // 2. Updated error message for clarity
-        JSON.stringify({ type: "error", message: "Failed to get code: " + e.message })
-      );
+    } else {
+      // --- SIMPLE MODE ---
+      // Just call the existing 'sendMessage' function inside the simple HTML
+      const jsToInject = `
+        if (typeof sendMessage === 'function') {
+          sendMessage();
+        }
+        true;
+      `;
+      webViewRef.current?.injectJavaScript(jsToInject);
     }
-    true; // Required for Android
-  `;
-
-  webViewRef.current?.injectJavaScript(jsToInject);
-};
+  };
 
   const renderWebLoading = () => (
     <View style={styles.loading}>
