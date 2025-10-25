@@ -1,9 +1,10 @@
 import React, { useRef, useState } from "react";
-import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions } from "react-native";
+import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions, Alert, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import Constants from 'expo-constants';
 import DropDownPicker from 'react-native-dropdown-picker';
+import * as Clipboard from 'expo-clipboard'; // 2. Import Clipboard
 import { MONACO_LANGUAGES } from '../constants/languages'; // Make sure this path is correct
 
 const { width } = Dimensions.get("window");
@@ -60,7 +61,9 @@ export default function IndexScreen() {
   const webViewRef = useRef<WebView>(null);
   const [message, setMessage] = React.useState("Waiting for messages from HTML...");
   const [useMonaco, setUseMonaco] = React.useState(true);
-
+  // 2. --- ADD NEW STATE FOR THE COPY MODAL ---
+  const [isCopyModalVisible, setCopyModalVisible] = useState(false);
+  const [codeForCopy, setCodeForCopy] = useState('');
   // --- Dropdown State ---
   const [open, setOpen] = useState(false);
   const [language, setLanguage] = useState('javascript');
@@ -76,6 +79,10 @@ export default function IndexScreen() {
       if (data.type === "click") {
         // This is from your simple mode
         setMessage(data.payload);
+        
+      } else if (data.type === "showCopy") {
+        setCodeForCopy(data.payload); // A. Set the code
+        setCopyModalVisible(true);     // B. Open the modal
         
       } else if (data.type === "run") {
         // This is the code from Monaco, triggered by your "Run" button
@@ -94,6 +101,63 @@ export default function IndexScreen() {
       console.warn("Received invalid message:", event.nativeEvent.data);
     }
   };
+
+  //  For copy Button
+  // 4. --- NEW "COPY" FUNCTION ---
+  const handleCopyPress = () => {
+    // This injects JS to get the code, just like your "Run" button
+    // But it sends a *different* message type back
+    const jsToInject = `
+      try {
+        const code = window.editorInstance.getValue();
+        window.ReactNativeWebView.postMessage(
+          JSON.stringify({ type: "showCopy", payload: code }) // <-- New type
+        );
+      } catch (e) {
+        window.ReactNativeWebView.postMessage(
+          JSON.stringify({ type: "error", message: "Failed to get code: " + e.message })
+        );
+      }
+      true;
+    `;
+    webViewRef.current?.injectJavaScript(jsToInject);
+  };
+
+  // For paste Button
+  const handlePastePress = async () => {
+    // A. Get text from the clipboard
+    const clipboardText = await Clipboard.getStringAsync();
+
+    if (!clipboardText) {
+      Alert.alert("Clipboard Empty", "Nothing to paste.");
+      return;
+    }
+
+    // B. Show the confirmation popup (your idea!)
+    Alert.alert(
+      "Paste from Clipboard",
+      clipboardText, // Show the user what they're pasting
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "OK",
+          onPress: () => {
+            // C. Send the text to the WebView
+            webViewRef.current?.postMessage(
+              JSON.stringify({
+                type: 'paste',
+                payload: clipboardText,
+              })
+            );
+          },
+        },
+      ]
+    );
+  };
+
 
   /**
    * 🚀 Send 'Run' (get code) or 'Set Language' messages
@@ -175,6 +239,10 @@ export default function IndexScreen() {
         />
         
         <View style={styles.headerButtons}>
+          {/* 5. --- ADD THE NEW "COPY" BUTTON --- */}
+          {useMonaco && <Button title="Copy" onPress={handleCopyPress} />}
+          {/* 4. --- ADD THE NEW "PASTE" BUTTON --- */}
+          {useMonaco && <Button title="Paste" onPress={handlePastePress} />}
           <Button
             title={useMonaco ? "Simple" : "Monaco"}
             onPress={() => setUseMonaco(!useMonaco)}
@@ -207,6 +275,33 @@ export default function IndexScreen() {
           scrollEnabled={!open}
         />
       </View>
+
+      <Modal
+        visible={isCopyModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setCopyModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Copy from Text</Text>
+            <Text style={styles.modalSubtitle}>
+              You can now tap and hold the text below to select and copy.
+            </Text>
+            
+            {/* This is the read-only, selectable text input */}
+            <TextInput
+              style={styles.copyTextInput}
+              value={codeForCopy}
+              multiline={true}
+              // editable={false} // Read-only
+              selectionColor="#4CAF50" // Optional: style the selection
+            />
+            
+            <Button title="Close" onPress={() => setCopyModalVisible(false)} />
+          </View>
+        </View>
+      </Modal>
 
       {/* Output */}
       <View style={styles.outputBox}
@@ -277,5 +372,45 @@ const styles = StyleSheet.create({
   outputText: {
     color: "#4CAF50",
     fontSize: 15,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    height: '70%',
+    backgroundColor: '#1e1e1e',
+    borderRadius: 10,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 10,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 20,
+  },
+  copyTextInput: {
+    flex: 1,
+    backgroundColor: '#2d2d2d',
+    color: '#ddd',
+    padding: 10,
+    borderRadius: 5,
+    fontFamily: 'monospace', // Make it look like code
+    fontSize: 16,
+    textAlignVertical: 'top',
+    marginBottom: 20,
   },
 });
