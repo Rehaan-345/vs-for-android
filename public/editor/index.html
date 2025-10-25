@@ -50,9 +50,20 @@
         // --- FIX: Use window.editorInstance ---
         window.editorInstance.getModel().onDidChangeContent(() => {
           const code = window.editorInstance.getValue(); 
+          const model = window.editorInstance.getModel();
+          const canUndo = model.canUndo();
+          const canRedo = model.canRedo();
+
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(
               JSON.stringify({ type: "code", payload: code })
+            );
+            // --- ALSO SEND THE STACK STATUS ---
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({
+                type: "stackChange",
+                payload: { canUndo: canUndo, canRedo: canRedo }
+              })
             );
           }
         });
@@ -95,6 +106,20 @@
             }
           }
           // --- END OF NEW BLOCK ---
+
+          // --- ADD THESE TWO NEW BLOCKS ---
+            else if (data && data.type === 'undo') {
+              if (window.editorInstance) {
+                window.editorInstance.trigger('RN', 'undo');
+              }
+            }
+
+            else if (data && data.type === 'redo') {
+              if (window.editorInstance) {
+                window.editorInstance.trigger('RN', 'redo');
+              }
+            }
+            // --- END OF NEW BLOCKS ---
           
       });
 

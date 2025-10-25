@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions, Alert, Modal, TextInput } from "react-native";
+import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions, Alert, Modal, TextInput, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import Constants from 'expo-constants';
@@ -71,6 +71,12 @@ export default function IndexScreen() {
 
   // --- Paste Flow State ---
   const [textToPaste, setTextToPaste] = useState('');
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+
+
+
 
   /**
    * 🔁 Receives messages from EITHER HTML file
@@ -135,6 +141,9 @@ export default function IndexScreen() {
             },
           ]
         );
+      } else if (data.type === "stackChange") {
+        setCanUndo(data.payload.canUndo);
+        setCanRedo(data.payload.canRedo);
       } else if (data.type === "error") {
         console.error("WebView Error:", data.message);
         setMessage(`WebView Error: ${data.message}`);
@@ -228,6 +237,25 @@ export default function IndexScreen() {
     webViewRef.current?.injectJavaScript(jsToInject);
   };
 
+// --- 1. ADD THE UNDO/REDO HANDLERS ---
+  const handleUndo = () => {
+    webViewRef.current?.postMessage(
+      JSON.stringify({ type: 'undo' })
+    );
+  };
+
+  const handleRedo = () => {
+    webViewRef.current?.postMessage(
+      JSON.stringify({ type: 'redo' })
+    );
+  };
+
+
+
+
+
+
+
 
   /**
    * 🚀 Send 'Run' (get code) message
@@ -310,13 +338,49 @@ export default function IndexScreen() {
         />
         
         <View style={styles.headerButtons}>
-          {useMonaco && <Button title="Copy" onPress={handleCopyPress} />}
-          {useMonaco && <Button title="Paste" onPress={handlePastePress} />}
-          <Button
-            title={useMonaco ? "Simple" : "Monaco"}
-            onPress={() => setUseMonaco(!useMonaco)}
-          />
-          <Button title="Run" onPress={sendToWebView} />
+          {useMonaco && (
+            <TouchableOpacity 
+              style={styles.headerButton} 
+              onPress={handleUndo} 
+              disabled={!canUndo}
+            >
+              <Text style={[styles.headerButtonText, !canUndo && styles.headerButtonTextDisabled]}>
+                Undo
+              </Text>
+            </TouchableOpacity>
+          )}
+          {useMonaco && (
+            <TouchableOpacity 
+              style={styles.headerButton} 
+              onPress={handleRedo} 
+              disabled={!canRedo}
+            >
+              <Text style={[styles.headerButtonText, !canRedo && styles.headerButtonTextDisabled]}>
+                Redo
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {useMonaco && (
+            <TouchableOpacity style={styles.headerButton} onPress={handleCopyPress}>
+              <Text style={styles.headerButtonText}>Copy</Text>
+            </TouchableOpacity>
+          )}
+          {useMonaco && (
+            <TouchableOpacity style={styles.headerButton} onPress={handlePastePress}>
+              <Text style={styles.headerButtonText}>Paste</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity style={styles.headerButton} onPress={() => setUseMonaco(!useMonaco)}>
+            <Text style={styles.headerButtonText}>
+              {useMonaco ? "Simple" : "Monaco"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.headerButton} onPress={sendToWebView}>
+            <Text style={styles.headerButtonText}>Run</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -474,5 +538,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlignVertical: 'top',
     marginBottom: 20,
+  },
+  // --- ADD THESE NEW STYLES ---
+  headerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    // Add a little padding to make it a bigger touch target
+  },
+  headerButtonText: {
+    color: '#007AFF', // Standard blue button color (like iOS)
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerButtonTextDisabled: {
+    color: '#555', // A much nicer "disabled" gray
   },
 });
