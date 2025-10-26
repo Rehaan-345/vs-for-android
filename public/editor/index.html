@@ -48,7 +48,7 @@
 
         // --- FIX: Assign to window.editorInstance ---
         window.editorInstance = monaco.editor.create(document.getElementById('editor'), {
-          value: '// Welcome to your new editor!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n\n\n\n\n\n',
+          value: '// Welcome to your new editor!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n\n\n',
           language: 'javascript',
           theme: 'vs-dark',
           minimap: { enabled: false },
@@ -153,6 +153,8 @@
             editor.trigger('keyboard', 'editor.action.showContextMenu', {});
           }
         }
+
+        
 
         // --- END OF NEW BLOCKS ---
 

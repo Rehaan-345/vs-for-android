@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions, Alert, Modal, TextInput, TouchableOpacity } from "react-native";
+import { View, Text, Button, ActivityIndicator, StyleSheet, Dimensions, Alert, Modal, TextInput, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import Constants from 'expo-constants';
@@ -98,7 +98,7 @@ export default function IndexScreen() {
         // From "Run" button
         console.log("--- Code from Editor (Run Button) ---");
         console.log(data.payload);
-        setMessage(data.payload);
+        setMessage("--- Code from Editor (Run Button) ---\n"+data.payload);
         
       } else if (data.type === "code") {
         // From 'onDidChangeContent' (every keystroke)
@@ -164,21 +164,58 @@ export default function IndexScreen() {
    * 4. --- "COPY" FUNCTION ---
    */
   const handleCopyPress = () => {
-    const jsToInject = `
-      try {
-        const code = window.editorInstance.getValue();
-        window.ReactNativeWebView.postMessage(
-          JSON.stringify({ type: "showCopy", payload: code }) // <-- New type
-        );
-      } catch (e) {
-        window.ReactNativeWebView.postMessage(
-          JSON.stringify({ type: "error", message: "Failed to get code: " + e.message })
-        );
+  const jsToInject = `
+    try {
+      window.editorInstance.focus(); // Ensure editor is active
+      const selection = window.editorInstance.getSelection();
+      let textToCopy = "";
+
+      if (selection.isEmpty()) {
+        // No selection, so get all code
+        textToCopy = window.editorInstance.getValue();
+      } else {
+        // A selection exists, so just get the selected text
+        const model = window.editorInstance.getModel();
+        textToCopy = model.getValueInRange(selection);
       }
-      true;
-    `;
-    webViewRef.current?.injectJavaScript(jsToInject);
-  };
+
+      // Send the correct text (selection or all) to the modal
+      window.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: "showCopy", payload: textToCopy })
+      );
+      
+    } catch (e) {
+      window.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: "error", message: "Failed to get code: " + e.message })
+      );
+    }
+    true; // Required for Android
+  `;
+  webViewRef.current?.injectJavaScript(jsToInject);
+};
+
+/**
+   * 🚀 Copies text from the modal to the clipboard
+   */
+  const handleCopyToClipboard = async () => {
+  if (codeForCopy) {
+    // 1. Copy the text
+    await Clipboard.setStringAsync(codeForCopy);
+
+    // 2. Create a preview (e.g., first 50 chars)
+    const preview = codeForCopy.substring(0, 50) + (codeForCopy.length > 50 ? "..." : "");
+
+    // 3. Show the new alert
+    Alert.alert(
+      "Copied!",
+      `The following text is now on your clipboard:\n\n"${preview}"`
+    );
+    
+    // 4. Close the modal
+    setCopyModalVisible(false);
+  }
+};
+
 
   /**
    * 3. --- NEW "PASTE" FUNCTION ---
@@ -392,6 +429,8 @@ const handleContextMenu = () => {
             }
           }}
           theme="DARK"
+          zIndex={3000}
+          zIndexInverse={1000}
           // We must use MODAL to fix all scrolling and touch issues
           listMode="SCROLLVIEW" 
         />
@@ -459,7 +498,7 @@ const handleContextMenu = () => {
       </View>
 
       {/* WebView container */}
-      <View style={styles.webViewBox}>
+      <View style={styles.webViewBox} pointerEvents={open ? 'none' : 'auto'}>
         <WebView
           ref={webViewRef}
           originWhitelist={["*"]}
@@ -470,6 +509,7 @@ const handleContextMenu = () => {
           startInLoadingState
           renderLoading={renderWebLoading}
           style={{ flex: 1, backgroundColor: "#1e1e1e" }}
+          pointerEvents={open ? 'none' : 'auto'}
         />
       </View>
 
@@ -495,16 +535,19 @@ const handleContextMenu = () => {
               selectionColor="#4CAF50"
             />
             
+            <View style={styles.modalButtonContainer}>
+            <Button title="Copy All" onPress={handleCopyToClipboard} color="#4CAF50" />
             <Button title="Close" onPress={() => setCopyModalVisible(false)} />
+          </View>
           </View>
         </View>
       </Modal>
 
       {/* Output */}
-      <View style={styles.outputBox}>
+      <ScrollView style={styles.outputBox}>
         <Text style={styles.outputLabel}>Output:</Text>
         <Text style={styles.outputText}>{message}</Text>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -612,6 +655,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlignVertical: 'top',
     marginBottom: 20,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 20, // Adds space between the buttons
   },
   // --- ADD THESE NEW STYLES ---
   headerButton: {
