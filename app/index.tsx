@@ -314,6 +314,18 @@ const handleContextMenu = () => {
 };
 
 /**
+ * 🚀 Send 'Find' message
+ */
+const handleFind = () => {
+  webViewRef.current?.postMessage(
+    JSON.stringify({ type: 'find' })
+  );
+};
+
+
+
+
+/**
  * 🚀 Custom "Cut" Function
  * This will get the selection, delete it, and send the text
  * back to React Native to be placed in the clipboard.
@@ -455,6 +467,11 @@ const handleContextMenu = () => {
                 <Text style={styles.headerButtonText}>Format</Text>
               </TouchableOpacity>
             )}
+            {useMonaco && (
+            <TouchableOpacity style={styles.headerButton} onPress={handleFind}>
+              <Text style={styles.headerButtonText}>Find</Text>
+            </TouchableOpacity>
+          )}
             {useMonaco && (
               <TouchableOpacity style={styles.headerButton} onPress={handleContextMenu}>
                 <Text style={styles.headerButtonText}>Context Menu</Text>
