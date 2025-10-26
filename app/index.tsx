@@ -435,7 +435,16 @@ const handleContextMenu = () => {
           listMode="SCROLLVIEW" 
         />
         
-        <View style={styles.headerButtons}>
+        
+      </View>
+
+
+        <View style={styles.toolbarContainer}>
+        <ScrollView
+          horizontal={true}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolbarContent}
+        >
           {/* {useMonaco && (
               <TouchableOpacity style={styles.headerButton} onPress={handleCut}>
                 <Text style={styles.headerButtonText}>Cut</Text>
@@ -494,8 +503,9 @@ const handleContextMenu = () => {
           <TouchableOpacity style={styles.headerButton} onPress={sendToWebView}>
             <Text style={styles.headerButtonText}>Run</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+
 
       {/* WebView container */}
       <View style={styles.webViewBox} pointerEvents={open ? 'none' : 'auto'}>
@@ -567,13 +577,18 @@ const styles = StyleSheet.create({
     // but safe to keep.
     zIndex: 1000, 
   },
-  headerButtons: {
-    flexDirection: "row", 
-    alignItems: "center",
-    flexWrap: 'wrap', // Allows buttons to wrap if needed
-    justifyContent: 'flex-end',
-    flex: 1, // Take remaining space
-    gap: 10
+  
+  toolbarContainer: {
+    paddingVertical: 10,
+    backgroundColor: '#1a1a1a', // A slightly different dark shade
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  toolbarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16, // Adds padding to the start/end of the scroll
+    gap: 15, // This creates space between your buttons
   },
   dropdown: {
     backgroundColor: '#333',
