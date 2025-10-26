@@ -1,14 +1,27 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-    #editor { width: 100%; height: 100%; }
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #editor {
+      width: 100%;
+      height: 100%;
+    }
   </style>
 </head>
+
 <body>
-  
+
   <h1 style="color: white;">Loading Monaco...</h1>
 
   <div id="editor"></div>
@@ -26,16 +39,16 @@
     try {
       // This local variable 'editor' is fine, but we will
       // assign the instance to 'window.editorInstance'
-      let editor; 
+      let editor;
 
       require.config({ paths: { 'vs': './vs' } });
 
       require(['vs/editor/editor.main'], function () {
         document.querySelector('h1').remove();
-        
+
         // --- FIX: Assign to window.editorInstance ---
         window.editorInstance = monaco.editor.create(document.getElementById('editor'), {
-          value: '// Welcome to your new editor!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n',
+          value: '// Welcome to your new editor!\nfunction hello() {\n\tconsole.log("Loaded!");\n}\n\n\n\n\n\n',
           language: 'javascript',
           theme: 'vs-dark',
           minimap: { enabled: false },
@@ -43,13 +56,13 @@
           fontSize: 16,
           // --- ADD THIS LINE TO STOP AUTO-INDENT ---
           autoIndent: 'none',
-          onpaste:false
+          onpaste: false
         });
 
         // 4. Bridge: WebView -> React Native (for every keystroke)
         // --- FIX: Use window.editorInstance ---
         window.editorInstance.getModel().onDidChangeContent(() => {
-          const code = window.editorInstance.getValue(); 
+          const code = window.editorInstance.getValue();
           const model = window.editorInstance.getModel();
           const canUndo = model.canUndo();
           const canRedo = model.canRedo();
@@ -70,57 +83,79 @@
       });
 
       // 5. Bridge: React Native -> WebView
-      document.addEventListener('message', function(event) {
-          let data;
-          try {
-            // Try to parse the message as JSON
-            data = JSON.parse(event.data);
-          } catch (e) {
-            // It's not JSON, so it must be the old 'newCode' string
-            // (This path is no longer used by our RN app but is safe to keep)
-            if (window.editorInstance) {
-              window.editorInstance.setValue(event.data);
-            }
-            return; // Exit
+      document.addEventListener('message', function (event) {
+        let data;
+        try {
+          // Try to parse the message as JSON
+          data = JSON.parse(event.data);
+        } catch (e) {
+          // It's not JSON, so it must be the old 'newCode' string
+          // (This path is no longer used by our RN app but is safe to keep)
+          if (window.editorInstance) {
+            window.editorInstance.setValue(event.data);
           }
+          return; // Exit
+        }
 
-          // --- HANDLE THE JSON MESSAGE ---
-          if (data && data.type === 'setLanguage') {
-            // <<< THIS IS THE NEW PART >>>
-            const newLanguage = data.payload;
-            if (window.editorInstance) {
-              monaco.editor.setModelLanguage(
-                window.editorInstance.getModel(),
-                newLanguage
-              );
-            }
-          } 
-          // --- ADD THIS NEW BLOCK ---
-          else if (data && data.type === 'paste') {
-            if (window.editorInstance) {
-              // This triggers Monaco's native paste action
-              // and inserts the text at the current cursor.
-              window.editorInstance.trigger('clipboard', 'paste', {
-                text: data.payload
-              });
-            }
+        // --- HANDLE THE JSON MESSAGE ---
+        if (data && data.type === 'setLanguage') {
+          // <<< THIS IS THE NEW PART >>>
+          const newLanguage = data.payload;
+          if (window.editorInstance) {
+            monaco.editor.setModelLanguage(
+              window.editorInstance.getModel(),
+              newLanguage
+            );
           }
-          // --- END OF NEW BLOCK ---
+        }
+        // --- ADD THIS NEW BLOCK ---
+        else if (data && data.type === 'paste') {
+          if (window.editorInstance) {
+            // This triggers Monaco's native paste action
+            // and inserts the text at the current cursor.
+            window.editorInstance.trigger('clipboard', 'paste', {
+              text: data.payload
+            });
+          }
+        }
+        // --- END OF NEW BLOCK ---
 
-          // --- ADD THESE TWO NEW BLOCKS ---
-            else if (data && data.type === 'undo') {
-              if (window.editorInstance) {
-                window.editorInstance.trigger('RN', 'undo');
-              }
-            }
+        // --- ADD THESE TWO NEW BLOCKS ---
+        else if (data && data.type === 'undo') {
+          if (window.editorInstance) {
+            window.editorInstance.focus(); // <-- ADD THIS
+            window.editorInstance.trigger('RN', 'undo');
+          }
+        }
 
-            else if (data && data.type === 'redo') {
-              if (window.editorInstance) {
-                window.editorInstance.trigger('RN', 'redo');
-              }
-            }
-            // --- END OF NEW BLOCKS ---
-          
+        else if (data && data.type === 'redo') {
+          if (window.editorInstance) {
+            window.editorInstance.focus(); // <-- ADD THIS
+            window.editorInstance.trigger('RN', 'redo');
+          }
+        }
+        // --- END OF NEW BLOCKS ---
+        // --- ADD THESE TWO NEW BLOCKS ---
+        else if (data && data.type === 'format') {
+          if (window.editorInstance) {
+            window.editorInstance.focus(); // <-- ADD THIS
+            // This triggers the built-in "Format Document" action
+            window.editorInstance.getAction('editor.action.formatDocument').run();
+          }
+        }
+
+        else if (data && data.type === 'contextMenu') {
+          if (window.editorInstance) {
+            const editor = window.editorInstance;
+            editor.focus(); // Ensure the editor is focused
+
+            // Trigger the context menu (right-click) directly
+            editor.trigger('keyboard', 'editor.action.showContextMenu', {});
+          }
+        }
+
+        // --- END OF NEW BLOCKS ---
+
       });
 
     } catch (e) {
@@ -128,4 +163,5 @@
     }
   </script>
 </body>
+
 </html>

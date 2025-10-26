@@ -141,7 +141,14 @@ export default function IndexScreen() {
             },
           ]
         );
-      } else if (data.type === "stackChange") {
+      } 
+      // else if (data.type === "cutToClipboard") {
+      // // Received from our custom handleCut function
+      // Clipboard.setStringAsync(data.payload);
+      // Alert.alert("Cut", "Text was cut to the clipboard.");
+      
+      // }
+       else if (data.type === "stackChange") {
         setCanUndo(data.payload.canUndo);
         setCanRedo(data.payload.canRedo);
       } else if (data.type === "error") {
@@ -251,7 +258,59 @@ export default function IndexScreen() {
   };
 
 
+/**
+ * 🚀 Send 'Format' message
+ */
+const handleFormat = () => {
+  webViewRef.current?.postMessage(
+    JSON.stringify({ type: 'format' })
+  );
+};
 
+/**
+ * 🚀 Send 'Context Menu' message
+ */
+const handleContextMenu = () => {
+  webViewRef.current?.postMessage(
+    JSON.stringify({ type: 'contextMenu' })
+  );
+};
+
+/**
+ * 🚀 Custom "Cut" Function
+ * This will get the selection, delete it, and send the text
+ * back to React Native to be placed in the clipboard.
+//  */
+// const handleCut = () => {
+//   const jsToInject = `
+//     try {
+//       const selection = window.editorInstance.getSelection();
+      
+//       // Only proceed if there is a selection
+//       if (!selection.isEmpty()) {
+//         const model = window.editorInstance.getModel();
+//         const selectedText = model.getValueInRange(selection);
+        
+//         // 1. Delete the selected text
+//         window.editorInstance.executeEdits('RN-cut', [{
+//           range: selection,
+//           text: null // Passing null deletes the text in the range
+//         }]);
+
+//         // 2. Send the cut text back to React Native
+//         window.ReactNativeWebView.postMessage(
+//           JSON.stringify({ type: "cutToClipboard", payload: selectedText })
+//         );
+//       }
+//     } catch (e) {
+//       window.ReactNativeWebView.postMessage(
+//         JSON.stringify({ type: "error", message: "Failed to cut: " + e.message })
+//       );
+//     }
+//     true; // Required for Android
+//   `;
+//   webViewRef.current?.injectJavaScript(jsToInject);
+// };
 
 
 
@@ -334,10 +393,25 @@ export default function IndexScreen() {
           }}
           theme="DARK"
           // We must use MODAL to fix all scrolling and touch issues
-          listMode="MODAL" 
+          listMode="SCROLLVIEW" 
         />
         
         <View style={styles.headerButtons}>
+          {/* {useMonaco && (
+              <TouchableOpacity style={styles.headerButton} onPress={handleCut}>
+                <Text style={styles.headerButtonText}>Cut</Text>
+              </TouchableOpacity>
+            )} */}
+            {useMonaco && (
+              <TouchableOpacity style={styles.headerButton} onPress={handleFormat}>
+                <Text style={styles.headerButtonText}>Format</Text>
+              </TouchableOpacity>
+            )}
+            {useMonaco && (
+              <TouchableOpacity style={styles.headerButton} onPress={handleContextMenu}>
+                <Text style={styles.headerButtonText}>Context Menu</Text>
+              </TouchableOpacity>
+            )}
           {useMonaco && (
             <TouchableOpacity 
               style={styles.headerButton} 
